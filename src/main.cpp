@@ -1,13 +1,3 @@
-/*    Changelog
-25.1.21  Werte für Temp, Hum und Pres nur noch mit einer Dezimalstelle um weniger Einträge im IPS-Archiv zu erzeugen
-11.05.21 mit OTA, alle Tags über einen Topic
-
-
-
-
-
-
-*/
 
 #include <Arduino.h>
 
@@ -24,51 +14,27 @@
 #include "SPIFFS.h"
 #include <Arduino_JSON.h>
 #include <AsyncElegantOTA.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
 #include "WLAN_Credentials.h"
+#include "config.h"
+#include "wifi_mqtt.h"
 
 
-#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
-#define SERIALINIT Serial.begin(115200);
-#else
-#define SERIALINIT
-#endif
+// NTP
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
+long My_time = 0;
+long Start_time;
+long Up_time;
+long U_days;
+long U_hours;
+long U_min;
+long U_sec;
 
-//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   Anpassungen !!!!
-// set hostname used for MQTT tag and WiFi 
-#define HOSTNAME "Ruuvi"
-#define VERSION "v 2.0.0"
-
-
-// variables to connects to  MQTT broker
-const char* mqtt_server = "192.168.178.15";
-const char* willTopic = "tele/Ruuvi/LWT";       // muss mit HOSTNAME passen !!!  tele/HOSTNAME/LWT    !!! 
-
-//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   Anpassungen Ende !!!!
-
-int WiFi_reconnect = 0;
-
-// variables to connects to  MQTT broker
-byte willQoS = 0;
-const char* willMessage = "Offline";
-boolean willRetain = true;
-
-std::string mqtt_tag;
-std::string mqtt_data;
-char tagno[1];
-char strdata[20];
-bool known;
-int Mqtt_sendInterval = 120000;   // in milliseconds
-long Mqtt_lastScan = 0;
-long lastReconnectAttempt = 0;
-int Mqtt_reconnect = 0;
-
-// Define NTP Client to get time
-const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 0;
-const int   daylightOffset_sec = 0;
-int UTC_syncIntervall = 3600000; // in milliseconds = 1 hour
-long UTC_lastSync;
+// Timers auxiliar variables
+long now = millis();
 
 // set BLE stuff
 int BLE_scanTime = 5; //In seconds
@@ -78,16 +44,6 @@ BLEScan* pBLEScan;
 String Tag_found;
 String BLE_status;
 
-// Initializes the espClient. 
-WiFiClient myClient;
-PubSubClient client(myClient);
-// name used as Mqtt tag
-std::string gateway = HOSTNAME ;                   
-
-// Timers auxiliar variables
-long now = millis();
-char strtime[8];
-time_t UTC_time;
 
 // variables for LED blinking
 int esp32LED = 1;
@@ -105,7 +61,7 @@ float Ruuvi_bat[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
 int Ruuvi_time[] ={0,0,0,0,0,0,0};
 
 // Create AsyncWebServer object on port 80
-AsyncWebServer server(80);
+AsyncWebServer Asynserver(80);
 
 // Create a WebSocket object
 AsyncWebSocket ws("/ws");
@@ -123,13 +79,26 @@ void initSPIFFS() {
 String getOutputStates(){
   JSONVar myArray;
   
-  myArray["cards"][0]["c_text"] = String(HOSTNAME) + "   /   " + String(VERSION);
-  myArray["cards"][1]["c_text"] = willTopic;
+    U_days = Up_time / 86400;
+  U_hours = (Up_time % 86400) / 3600;
+  U_min = (Up_time % 3600) / 60;
+  U_sec = (Up_time % 60);
+
+  myArray["cards"][0]["c_text"] = Hostname;
+  myArray["cards"][1]["c_text"] = WiFi.dnsIP().toString() + "   /   " + String(VERSION);
   myArray["cards"][2]["c_text"] = String(WiFi.RSSI());
-  myArray["cards"][3]["c_text"] = BLE_status;
-  myArray["cards"][4]["c_text"] = Tag_found;
+  myArray["cards"][3]["c_text"] = String(MQTT_INTERVAL) + "ms";
+  myArray["cards"][4]["c_text"] = String(U_days) + " days " + String(U_hours) + ":" + String(U_min) + ":" + String(U_sec);
   myArray["cards"][5]["c_text"] = "WiFi = " + String(WiFi_reconnect) + "   MQTT = " + String(Mqtt_reconnect);
-  myArray["cards"][6]["c_text"] = String(BLE_scanTime) + " sec.";
+
+  if (BLE_status == "scan done") {
+    myArray["cards"][6]["c_text"] = Tag_found;
+  }else{
+    myArray["cards"][6]["c_text"] = BLE_status;
+  }
+  
+  myArray["cards"][7]["c_text"] = " to reboot click ok";
+
   
   String jsonString = JSON.stringify(myArray);
   log_i("%s",jsonString.c_str()); 
@@ -143,32 +112,27 @@ void notifyClients(String state) {
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-    data[len] = 0;
-    char help[30];
+    data[len] = 0;    // according to AsyncWebServer documentation this is ok
     int card;
-    int value;
-    
-    for (int i = 0; i <= len; i++){
-      help[i] = data[i];
-    }
+//    int value;
 
     log_i("Data received: ");
-    log_i("%s\n",help);
+    log_i("%s\n",data);
 
-    JSONVar myObject = JSON.parse(help);
+    JSONVar myObject = JSON.parse((const char *)data);
 
     card =  myObject["card"];
-    value =  myObject["value"];
+//    value =  myObject["value"];
     log_i("%d", card);
-    log_i("%d",value);
+//    log_i("%d",value);
 
     switch (card) {
       case 0:   // fresh connection
         notifyClients(getOutputStates());
         break;
-      case 9:   // fresh connection
-        BLE_scanTime = value;
-        notifyClients(getOutputStates());
+      case 7:
+        log_i("Reset..");
+        ESP.restart();
         break;
     }
   }
@@ -210,89 +174,11 @@ int convert(char num[]) {
    return temp;
 }
 
-void initWebSocket() {
-  ws.onEvent(onEvent);
-  server.addHandler(&ws);
-}
-
-// init WiFi
-void setup_wifi() {
-
-  delay(10);
-  digitalWrite(esp32LED, 0); 
-  delay(500);
-  digitalWrite(esp32LED, 1); 
-  delay(500);
-  digitalWrite(esp32LED, 0);
-  delay(500);
-  digitalWrite(esp32LED, 1);
-  log_i("Connecting to ");
-  log_i("%s",ssid);
-  log_i("%s",password);
-  WiFi.mode(WIFI_STA);
-  WiFi.setHostname(HOSTNAME);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-     if(led == 0){
-       digitalWrite(esp32LED, 1);  // LED aus
-       led = 1;
-     }else{
-       digitalWrite(esp32LED, 0);  // LED ein
-       led = 0;
-     }
-    log_i(".");
-  }
-
-  digitalWrite(esp32LED, 1);  // LED aus
-  led = 1;
-  log_i("WiFi connected - IP address: ");
-  log_i("%s",WiFi.localIP().toString().c_str());
-
-  // get time from NTP-server
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);  // update ESP-systemtime to UTC
-  delay(50);                                                 // udate takes some time
-  time(&UTC_time);
-  log_i("%s","Unix-timestamp =");
-  itoa(UTC_time,strtime,10);
-  log_i("%s",strtime);
-}
-
-// reconnect to WiFi 
-void reconnect_wifi() {
-  log_i("%s\n","WiFi try reconnect"); 
-  WiFi.begin();
-  delay(500);
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFi_reconnect = WiFi_reconnect + 1;
-    log_i("%s\n","WiFi reconnected"); 
-  }
-}
-
-// This functions reconnects your ESP32 to your MQTT broker
-void reconnect_mqtt() {
-  if (client.connect(gateway.c_str(), willTopic, willQoS, willRetain, willMessage)) {
-    // Once connected, publish an announcement...
-    log_i("%s\n","Mqtt connected"); 
-    mqtt_tag = gateway + "/connect";
-    client.publish(mqtt_tag.c_str(),"connected");
-    log_i("%s",mqtt_tag.c_str());
-    log_i("%s\n","connected");
-    mqtt_tag = "tele/" + gateway  + "/LWT";
-    client.publish(mqtt_tag.c_str(),"Online",willRetain);
-    log_i("%s",mqtt_tag.c_str());
-    log_i("%s\n","Online");
-
-    Mqtt_reconnect = Mqtt_reconnect + 1;
-
-  }
-}
-
-
 
 //  function for BLE scan
 void BLE_scanRuuvi () {
 
+  bool known;
   float f_value;
   int i_value;
   char cstr[10];
@@ -308,11 +194,6 @@ void BLE_scanRuuvi () {
   log_i("Scan done!");
   log_i("Devices found: ");
   log_i("%d\n",foundDevices.getCount());
-
-  time(&UTC_time);
-  log_i("%s","Unix-timestamp =");
-  itoa(UTC_time,strtime,10);
-  log_i("%s",strtime);
 
   Tag_found = "";
   int count = foundDevices.getCount();
@@ -332,7 +213,7 @@ void BLE_scanRuuvi () {
         log_i("found tag number:");
         log_i("-----------------------%d",i+1);
 
-        Ruuvi_time[i] = UTC_time;
+        Ruuvi_time[i] = My_time;
 
         if (i < 6) {
           strcpy(cstr, foundDevices.getDevice(ii).toString().substr(61,4).c_str());
@@ -407,59 +288,31 @@ void BLE_scanRuuvi () {
 // send data using Mqtt 
 void MQTTsend () {
 
-  for (int i = 0; i < 7; i++) {
-    /*
-    // send Ruuvi data
-    itoa(i+1, tagno, 10);     
-    mqtt_tag = "tele/" + gateway + "_Tag_" + std::string(tagno) + "/SENSOR";
-    log_i("%s",mqtt_tag.c_str());
+  JSONVar mqtt_data, Sensors;
 
-    sprintf(strdata,"%2.1f",Ruuvi_temp[i]);
-    std::string str1(strdata);
-    mqtt_data = "{\"Temp\":" + str1;
-    sprintf(strdata,"%2.1f",Ruuvi_hum[i]);
-    std::string str2(strdata);
-    mqtt_data = mqtt_data + ",\"Hum\":" + str2;
-    sprintf(strdata,"%2.1f",Ruuvi_pres[i]);
-    std::string str3(strdata);
-    mqtt_data = mqtt_data + ",\"Pres\":" + str3;
-    sprintf(strdata,"%1.3f",Ruuvi_bat[i]);
-    std::string str4(strdata);
-    mqtt_data = mqtt_data + ",\"Bat\":" + str4;
-    itoa(Ruuvi_time[i],strtime,10);
-    mqtt_data = mqtt_data + ",\"Time\":" + strtime + "}";
-
-    log_i("%s",mqtt_data.c_str());
-
-    client.publish(mqtt_tag.c_str(), mqtt_data.c_str());
-    */
-
-    JSONVar Mqtt_data;
+  String mqtt_tag = Hostname + "/STATUS";
+  log_i("%s\n", mqtt_tag.c_str());
   
-    Mqtt_data["Tag" + String(i+1)]["Temp"] = round(Ruuvi_temp[i]*100.0) / 100.0;
-    Mqtt_data["Tag" + String(i+1)]["Hum"] = round(Ruuvi_hum[i]*100.0) / 100.0;
-    Mqtt_data["Tag" + String(i+1)]["Pres"] = round(Ruuvi_pres[i]*100.0) / 100.0;
-    Mqtt_data["Tag" + String(i+1)]["Bat"] = round(Ruuvi_bat[i]*100.0) / 100.0;
-    Mqtt_data["Tag" + String(i+1)]["Time"] = Ruuvi_time[i];
-    String jsonString1 = JSON.stringify(Mqtt_data);
-
-    mqtt_tag = "tele/" + gateway +  "/SENSOR" ;
-
-    log_i("%s",mqtt_tag.c_str()); 
-    log_i("%s",jsonString1.c_str()); 
-    client.publish(mqtt_tag.c_str(), jsonString1.c_str());
+  for (int i = 0; i < 7; i++) {
+  
+    Sensors["Tag" + String(i+1)]["Temp"] = round(Ruuvi_temp[i]*100.0) / 100.0;
+    Sensors["Tag" + String(i+1)]["Hum"] = round(Ruuvi_hum[i]*100.0) / 100.0;
+    Sensors["Tag" + String(i+1)]["Pres"] = round(Ruuvi_pres[i]*100.0) / 100.0;
+    Sensors["Tag" + String(i+1)]["Bat"] = round(Ruuvi_bat[i]*100.0) / 100.0;
+    Sensors["Tag" + String(i+1)]["Time"] = Ruuvi_time[i];
   }
 
-  JSONVar Mqtt_state;
+  mqtt_data["Time"] = My_time;
+  mqtt_data["RSSI"] = WiFi.RSSI();
+  mqtt_data["Sensors"] = Sensors;
 
-  Mqtt_state["Wifi"]["RSSI"] = abs(WiFi.RSSI());
-  String jsonString2 = JSON.stringify(Mqtt_state);
+  String mqtt_string = JSON.stringify(mqtt_data);
 
-  mqtt_tag = "tele/" + gateway +  "/STATE" ;
+  log_i("%s\n", mqtt_string.c_str());
 
-  log_i("%s",mqtt_tag.c_str()); 
-  log_i("%s",jsonString2.c_str()); 
-  client.publish(mqtt_tag.c_str(), jsonString2.c_str());  
+  Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
+
+  notifyClients(getOutputStates());
 }
 
 // setup 
@@ -475,10 +328,10 @@ void setup() {
   led = 1;
 
   log_i("setup WiFi\n");
-  setup_wifi();
+  initWiFi();
 
   log_i("setup MQTT\n");
-  client.setServer(mqtt_server, 1883);
+  Mqttclient.setServer(MQTT_BROKER, 1883);
 
   // initialise BLE stuff
   log_i("BLE ini\n");
@@ -489,27 +342,41 @@ void setup() {
   pBLEScan->setWindow(90);  // less or equal setInterval value 
 
   initSPIFFS();
-  initWebSocket();
+
+  // init Websocket
+  ws.onEvent(onEvent);
+  Asynserver.addHandler(&ws);
 
   // Route for root / web page
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+  Asynserver.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/index.html", "text/html",false);
   });
 
-  server.serveStatic("/", SPIFFS, "/");
+  Asynserver.serveStatic("/", SPIFFS, "/");
+
+  timeClient.begin();
+  timeClient.setTimeOffset(0);
+  // update UPCtime for Starttime
+  timeClient.update();
+  Start_time = timeClient.getEpochTime();
 
   // Start ElegantOTA
-  AsyncElegantOTA.begin(&server);
+  AsyncElegantOTA.begin(&Asynserver);
   
   // Start server
-  server.begin();
+  Asynserver.begin();
 }
 
 
 void loop() {
 
-  AsyncElegantOTA.loop();
+
   ws.cleanupClients();
+
+  // update UPCtime
+  timeClient.update();
+  My_time = timeClient.getEpochTime();
+  Up_time = My_time - Start_time;
 
   now = millis();
 
@@ -553,20 +420,10 @@ void loop() {
       reconnect_wifi();
     }
   }
-
-  // perform UTC sync
-  if (now - UTC_lastSync > UTC_syncIntervall) {
-    UTC_lastSync = now;
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);  // update ESP-systemtime to UTC
-    delay(50);                                                 // udate takes some time
-    time(&UTC_time);
-    log_i("%s","Re-sync ESP-time!! Unix-timestamp =");
-    itoa(UTC_time,strtime,10);
-    log_i("%s",strtime);
-  }      
+  
 
   // check if MQTT broker is still connected
-  if (!client.connected()) {
+  if (!Mqttclient.connected()) {
     // try reconnect every 5 seconds
     if (now - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = now;
@@ -576,11 +433,11 @@ void loop() {
   } else {
     // Client connected
 
-    client.loop();
+    Mqttclient.loop();
 
     // send data to MQTT broker
-    if (now - Mqtt_lastScan > Mqtt_sendInterval) {
-    Mqtt_lastScan = now;
+    if (now - Mqtt_lastSend > MQTT_INTERVAL) {
+    Mqtt_lastSend = now;
     MQTTsend();
     } 
   }

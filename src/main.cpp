@@ -58,7 +58,7 @@ float Ruuvi_temp[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
 float Ruuvi_hum[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
 float Ruuvi_pres[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
 float Ruuvi_bat[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
-int Ruuvi_time[] ={0,0,0,0,0,0,0};
+long Ruuvi_time[] ={0,0,0,0,0,0,0};
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer Asynserver(80);
@@ -79,7 +79,7 @@ void initSPIFFS() {
 String getOutputStates(){
   JSONVar myArray;
   
-    U_days = Up_time / 86400;
+  U_days = Up_time / 86400;
   U_hours = (Up_time % 86400) / 3600;
   U_min = (Up_time % 3600) / 60;
   U_sec = (Up_time % 60);
@@ -281,36 +281,46 @@ void BLE_scanRuuvi () {
   pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
 
   BLE_status = "scan done";
+
+  // update UPCtime
+  timeClient.update();
+  My_time = timeClient.getEpochTime();
+  Up_time = My_time - Start_time;
+
   notifyClients(getOutputStates());
 
 }
 
-// send data using Mqtt 
+// send data using Mqtt  lange Meldungenhaben zu Problemen geführt. Vollig unklar. Deshalb in 8 kurze Meldungen zerschlagen. !!!
 void MQTTsend () {
 
-  JSONVar mqtt_data, Sensors;
+  JSONVar mqtt_data;
 
   String mqtt_tag = Hostname + "/STATUS";
   log_i("%s\n", mqtt_tag.c_str());
-  
-  for (int i = 0; i < 7; i++) {
-  
-    Sensors["Tag" + String(i+1)]["Temp"] = round(Ruuvi_temp[i]*100.0) / 100.0;
-    Sensors["Tag" + String(i+1)]["Hum"] = round(Ruuvi_hum[i]*100.0) / 100.0;
-    Sensors["Tag" + String(i+1)]["Pres"] = round(Ruuvi_pres[i]*100.0) / 100.0;
-    Sensors["Tag" + String(i+1)]["Bat"] = round(Ruuvi_bat[i]*100.0) / 100.0;
-    Sensors["Tag" + String(i+1)]["Time"] = Ruuvi_time[i];
-  }
 
   mqtt_data["Time"] = My_time;
   mqtt_data["RSSI"] = WiFi.RSSI();
-  mqtt_data["Sensors"] = Sensors;
-
   String mqtt_string = JSON.stringify(mqtt_data);
-
   log_i("%s\n", mqtt_string.c_str());
-
   Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
+  
+  for (int i = 0; i < 7; i++) {
+  
+    delete (mqtt_data);
+    JSONVar mqtt_data;
+
+    mqtt_data["Tag" + String(i+1) + "_Temp"] = round(Ruuvi_temp[i]*100.0) / 100.0;
+    mqtt_data["Tag" + String(i+1) + "_Hum"] = round(Ruuvi_hum[i]*100.0) / 100.0;
+    mqtt_data["Tag" + String(i+1) + "_Pres"] = round(Ruuvi_pres[i]*100.0) / 100.0;
+    mqtt_data["Tag" + String(i+1) + "_Bat"] = round(Ruuvi_bat[i]*100.0) / 100.0;
+    mqtt_data["Tag" + String(i+1) + "_Time"] = Ruuvi_time[i];
+
+    String mqtt_string = JSON.stringify(mqtt_data);
+    log_i("%s\n", mqtt_string.c_str());
+    Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
+  }
+
 
   notifyClients(getOutputStates());
 }
@@ -369,7 +379,6 @@ void setup() {
 
 
 void loop() {
-
 
   ws.cleanupClients();
 
@@ -437,8 +446,8 @@ void loop() {
 
     // send data to MQTT broker
     if (now - Mqtt_lastSend > MQTT_INTERVAL) {
-    Mqtt_lastSend = now;
-    MQTTsend();
+      Mqtt_lastSend = now;
+      MQTTsend();
     } 
   }
 }

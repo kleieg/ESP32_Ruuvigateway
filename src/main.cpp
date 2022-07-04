@@ -49,7 +49,7 @@ String BLE_status;
 int esp32LED = 1;
 bool led = 0;
 int RuuviCount = 0;
-int LEDblink = 0;
+long LEDblink = 0;
 int LEDcount = 0;
 
 // define addresses of the Ruuvi tags in the correct order from 1 to 6. Tag number 7 ist Xiaomi !!

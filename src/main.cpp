@@ -21,7 +21,6 @@
 #include "config.h"
 #include "wifi_mqtt.h"
 
-
 // NTP
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
@@ -46,19 +45,19 @@ String BLE_status;
 
 
 // variables for LED blinking
-int esp32LED = 1;
+LEDBLINK
 bool led = 0;
 int RuuviCount = 0;
 long LEDblink = 0;
 int LEDcount = 0;
 
-// define addresses of the Ruuvi tags in the correct order from 1 to 6. Tag number 7 ist Xiaomi !!
-String knownAddresses[] = { "fb:70:8c:f3:a3:b9", "e8:9d:dc:51:17:d9","e8:b6:b5:87:07:5d","ef:e4:23:64:95:62","c6:3b:b7:18:5e:54","f7:a8:99:ab:85:9b","a4:c1:38:2c:12:b3"};
-float Ruuvi_temp[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
-float Ruuvi_hum[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
-float Ruuvi_pres[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
-float Ruuvi_bat[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
-long Ruuvi_time[] ={0,0,0,0,0,0,0};
+// define addresses of the Ruuvi tags in the correct order from 1 to 6. Tag number 7 und 8 ist Xiaomi !!
+String knownAddresses[] = { "fb:70:8c:f3:a3:b9", "e8:9d:dc:51:17:d9","e8:b6:b5:87:07:5d","ef:e4:23:64:95:62","c6:3b:b7:18:5e:54","f7:a8:99:ab:85:9b","a4:c1:38:2c:12:b3","a4:c1:38:1f:fc:29"};
+float Ruuvi_temp[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1};
+float Ruuvi_hum[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1};
+float Ruuvi_pres[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1};
+float Ruuvi_bat[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1};
+long Ruuvi_time[] ={0,0,0,0,0,0,0,0};
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer Asynserver(80);
@@ -199,10 +198,10 @@ void BLE_scanRuuvi () {
   int count = foundDevices.getCount();
   for (int ii = 0; ii < count; ii++) {
     
-    //log_i("%s",foundDevices.getDevice(ii).getAddress().toString().c_str());   
+    log_i("%s",foundDevices.getDevice(ii).getAddress().toString().c_str());   
     known = false;
     
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
       if (strcmp(foundDevices.getDevice(ii).getAddress().toString().c_str(), knownAddresses[i].c_str()) == 0) known = true;
 
       if (known) {
@@ -255,24 +254,48 @@ void BLE_scanRuuvi () {
           Ruuvi_bat[i] = f_value;
         }
         else {
-          uint8_t temp_h = foundDevices.getDevice(ii).getServiceData()[6];
-          uint8_t temp_l = foundDevices.getDevice(ii).getServiceData()[7];
-          f_value = (temp_h * 256 + temp_l) / 10.;
-          //log_i("%s","Temperatur=");
-          //log_i("%f",f_value);
+
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[0]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[1]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[2]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[3]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[4]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[5]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[6]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[7]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[8]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[9]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[10]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[11]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[12]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[13]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[14]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[15]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[16]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[17]);
+          log_i("%d",foundDevices.getDevice(ii).getServiceData()[18]);
+
+
+
+          uint8_t temp_h = foundDevices.getDevice(ii).getServiceData()[7];
+          uint8_t temp_l = foundDevices.getDevice(ii).getServiceData()[6];
+          f_value = (temp_h * 256 + temp_l) / 100.;
+          log_i("%s","Temperatur=");
+          log_i("%f",f_value);
           Ruuvi_temp[i] = f_value;
 
-          uint8_t hum = foundDevices.getDevice(ii).getServiceData()[8];
-          f_value = hum;
-          //log_i("%s","Humidity=");
-          //log_i("%f",f_value);
+          uint8_t hum_h = foundDevices.getDevice(ii).getServiceData()[9];
+          uint8_t hum_l = foundDevices.getDevice(ii).getServiceData()[8];
+          f_value = (hum_h * 256 + hum_l) / 100.;
+          log_i("%s","Humidity=");
+          log_i("%f",f_value);
           Ruuvi_hum[i] = f_value;
 
-          uint8_t bat_h = foundDevices.getDevice(ii).getServiceData()[10];
-          uint8_t bat_l = foundDevices.getDevice(ii).getServiceData()[11];
+          uint8_t bat_h = foundDevices.getDevice(ii).getServiceData()[11];
+          uint8_t bat_l = foundDevices.getDevice(ii).getServiceData()[10];
           f_value = (bat_h * 256 + bat_l) / 1000.;
-          //log_i("%s","Battery=");
-          //log_i("%f",f_value);
+          log_i("%s","Battery=");
+          log_i("%f",f_value);
           Ruuvi_bat[i] = f_value;
         }
       }
@@ -305,7 +328,7 @@ void MQTTsend () {
   log_i("%s\n", mqtt_string.c_str());
   Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
   
-  for (int i = 0; i < 7; i++) {
+  for (int i = 0; i < 8; i++) {
   
     delete (mqtt_data);
     JSONVar mqtt_data;

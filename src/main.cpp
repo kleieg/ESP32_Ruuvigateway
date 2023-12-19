@@ -43,6 +43,8 @@ BLEScan* pBLEScan;
 String Tag_found;
 String BLE_status;
 
+// String for Mqtt Tag. Firts 5 bytes of Mac and :
+String mqtt_tag = "ruuvi/mac...."; 
 
 // variables for LED blinking
 LEDBLINK
@@ -53,6 +55,7 @@ int LEDcount = 0;
 
 // define addresses of the Ruuvi tags in the correct order from 1 to 6. Tag number 7 und 8 ist Xiaomi !!
 String knownAddresses[] = { "fb:70:8c:f3:a3:b9", "e8:9d:dc:51:17:d9","e8:b6:b5:87:07:5d","ef:e4:23:64:95:62","c6:3b:b7:18:5e:54","f7:a8:99:ab:85:9b","a4:c1:38:2c:12:b3","a4:c1:38:1f:fc:29"};
+String MqttAddresses[] = { "fb:70:8c:f3:a3:", "e8:9d:dc:51:17:","e8:b6:b5:87:07:","ef:e4:23:64:95:","c6:3b:b7:18:5e:","f7:a8:99:ab:85:","a4:c1:38:2c:12:","a4:c1:38:1f:fc:"};
 float Ruuvi_temp[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1};
 float Ruuvi_hum[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1};
 float Ruuvi_pres[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1};
@@ -86,7 +89,7 @@ String getOutputStates(){
   myArray["cards"][0]["c_text"] = Hostname;
   myArray["cards"][1]["c_text"] = WiFi.dnsIP().toString() + "   /   " + String(VERSION);
   myArray["cards"][2]["c_text"] = String(WiFi.RSSI());
-  myArray["cards"][3]["c_text"] = String(MQTT_INTERVAL) + "ms";
+  myArray["cards"][3]["c_text"] = "nach dem Scan";
   myArray["cards"][4]["c_text"] = String(U_days) + " days " + String(U_hours) + ":" + String(U_min) + ":" + String(U_sec);
   myArray["cards"][5]["c_text"] = "WiFi = " + String(WiFi_reconnect) + "   MQTT = " + String(Mqtt_reconnect);
 
@@ -298,6 +301,22 @@ void BLE_scanRuuvi () {
           log_i("%f",f_value);
           Ruuvi_bat[i] = f_value;
         }
+
+        JSONVar mqtt_data;
+
+        mqtt_data["temp"] = round(Ruuvi_temp[i]*100.0) / 100.0;
+        mqtt_data["humidity"] = round(Ruuvi_hum[i]*100.0) / 100.0;
+        mqtt_data["batt"] = round(Ruuvi_bat[i]*100.0) / 100.0;
+
+        mqtt_tag = "ruuvi/" + MqttAddresses[i];
+        log_i("%s\n", mqtt_tag.c_str());
+
+        String mqtt_string = JSON.stringify(mqtt_data);
+        log_i("%s\n", mqtt_string.c_str());
+        Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
+
+        delete (mqtt_data); 
+
       }
     }
   } 
@@ -305,48 +324,15 @@ void BLE_scanRuuvi () {
 
   BLE_status = "scan done";
 
+  notifyClients(getOutputStates());
+
   // update UPCtime
   timeClient.update();
   My_time = timeClient.getEpochTime();
   Up_time = My_time - Start_time;
 
-  notifyClients(getOutputStates());
-
 }
 
-// send data using Mqtt  lange Meldungenhaben zu Problemen geführt. Vollig unklar. Deshalb in 8 kurze Meldungen zerschlagen. !!!
-void MQTTsend () {
-
-  JSONVar mqtt_data;
-
-  String mqtt_tag = Hostname + "/STATUS";
-  log_i("%s\n", mqtt_tag.c_str());
-
-  mqtt_data["Time"] = My_time;
-  mqtt_data["RSSI"] = WiFi.RSSI();
-  String mqtt_string = JSON.stringify(mqtt_data);
-  log_i("%s\n", mqtt_string.c_str());
-  Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
-  
-  for (int i = 0; i < 8; i++) {
-  
-    delete (mqtt_data);
-    JSONVar mqtt_data;
-
-    mqtt_data["Tag" + String(i+1) + "_Temp"] = round(Ruuvi_temp[i]*100.0) / 100.0;
-    mqtt_data["Tag" + String(i+1) + "_Hum"] = round(Ruuvi_hum[i]*100.0) / 100.0;
-    mqtt_data["Tag" + String(i+1) + "_Pres"] = round(Ruuvi_pres[i]*100.0) / 100.0;
-    mqtt_data["Tag" + String(i+1) + "_Bat"] = round(Ruuvi_bat[i]*100.0) / 100.0;
-    mqtt_data["Tag" + String(i+1) + "_Time"] = Ruuvi_time[i];
-
-    String mqtt_string = JSON.stringify(mqtt_data);
-    log_i("%s\n", mqtt_string.c_str());
-    Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
-  }
-
-
-  notifyClients(getOutputStates());
-}
 
 // setup 
 void setup() {
@@ -364,7 +350,7 @@ void setup() {
   initWiFi();
 
   log_i("setup MQTT\n");
-  Mqttclient.setServer(MQTT_BROKER, 1883);
+  Mqttclient.setServer(MQTT_BROKER, 1884);
 
   // initialise BLE stuff
   log_i("BLE ini\n");
@@ -466,11 +452,5 @@ void loop() {
     // Client connected
 
     Mqttclient.loop();
-
-    // send data to MQTT broker
-    if (now - Mqtt_lastSend > MQTT_INTERVAL) {
-      Mqtt_lastSend = now;
-      MQTTsend();
-    } 
   }
 }

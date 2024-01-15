@@ -41,7 +41,7 @@ void initWiFi() {
   log_i("setup MQTT\n");
   
   mqttClient.begin(ethClient);
-  mqttClient.setHost(MQTT_BROKER, 1883);
+  mqttClient.setHost(MQTT_BROKER, 1884);
   mqttClient.setWill(willTopic.c_str(), "Offline", true, 0);
 }
 

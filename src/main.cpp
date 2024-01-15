@@ -5,7 +5,7 @@
 #include <WiFi.h>
 #include "time.h"
 #include <BLEDevice.h>
-#include <PubSubClient.h>
+#include <MQTT.h>
 #include <esp_system.h>
 #include <string>
 
@@ -163,14 +163,23 @@ int convert(char num[]) {
    int len = strlen(num);
    int base = 1;
    int temp = 0;
+   int help = 0;
    for (int i=len-1; i>=0; i--) {
       if (num[i]>='0' && num[i]<='9') {
-         temp += (num[i] - 48)*base;
-         base = base * 16;
+        temp += (num[i] - 48)*base;
+        base = base * 16;
       }
       else if (num[i]>='a' && num[i]<='f') {
-         temp += (num[i] - 87)*base;
-         base = base*16;
+        help = (num[i] - 87);
+        if (i = 0 and help > 7) {
+          help = help - 8;
+          temp += help*base;
+          temp = temp * -1;
+        }
+        else {
+          temp += help*base;
+        }
+        base = base*16;
       }
    }
    return temp;
@@ -313,7 +322,7 @@ void BLE_scanRuuvi () {
 
         String mqtt_string = JSON.stringify(mqtt_data);
         log_i("%s\n", mqtt_string.c_str());
-        Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
+        mqttClient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
 
         delete (mqtt_data); 
 
@@ -350,7 +359,7 @@ void setup() {
   initWiFi();
 
   log_i("setup MQTT\n");
-  Mqttclient.setServer(MQTT_BROKER, 1884);
+  initMQTT();
 
   // initialise BLE stuff
   log_i("BLE ini\n");
@@ -441,7 +450,7 @@ void loop() {
   
 
   // check if MQTT broker is still connected
-  if (!Mqttclient.connected()) {
+  if (!mqttClient.connected()) {
     // try reconnect every 5 seconds
     if (now - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = now;
@@ -451,6 +460,6 @@ void loop() {
   } else {
     // Client connected
 
-    Mqttclient.loop();
+    mqttClient.loop();
   }
 }

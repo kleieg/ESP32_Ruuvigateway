@@ -159,30 +159,30 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,AwsEventType t
 }
 
 
-int convert(char num[]) {
-   int len = strlen(num);
+int convert(char hex[], int negativ) {
+   int len = strlen(hex);
    int base = 1;
-   int temp = 0;
+   int dec = 0;
    int help = 0;
+
    for (int i=len-1; i>=0; i--) {
-      if (num[i]>='0' && num[i]<='9') {
-        temp += (num[i] - 48)*base;
+      if (hex[i]>='0' && hex[i]<='9') {
+        dec += (hex[i] - 48)*base;
         base = base * 16;
       }
-      else if (num[i]>='a' && num[i]<='f') {
-        help = (num[i] - 87);
-        if (i = 0 and help > 7) {
+      else if (hex[i]>='a' && hex[i]<='f') {
+        help = (hex[i] - 87);  
+        if (negativ == 1 and i == 0 and help > 7) {
           help = help - 8;
-          temp += help*base;
-          temp = temp * -1;
+          dec += help * base * -1;
         }
         else {
-          temp += help*base;
+          dec += help * base;
         }
-        base = base*16;
+        base = base * 16;
       }
    }
-   return temp;
+   return dec;
 }
 
 
@@ -230,7 +230,7 @@ void BLE_scanRuuvi () {
           strcpy(cstr, foundDevices.getDevice(ii).toString().substr(61,4).c_str());
           //log_i("%s","Temperaturstring=");
           //log_i("%s",cstr);
-          f_value = convert(cstr) * 0.005;
+          f_value = convert(cstr,1) * 0.005;
           //log_i("%s","Temperatur=");
           //log_i("%f",f_value);
           Ruuvi_temp[i] = f_value;
@@ -238,7 +238,7 @@ void BLE_scanRuuvi () {
           strcpy(cstr, foundDevices.getDevice(ii).toString().substr(65,4).c_str());
           //log_i("%s","Humiditystring=");
           //log_i("%s",cstr);
-          f_value = convert(cstr) * 0.0025;
+          f_value = convert(cstr,0) * 0.0025;
           //log_i("%s","Humidity=");
           //log_i("%f",f_value);
           Ruuvi_hum[i] = f_value;
@@ -246,7 +246,7 @@ void BLE_scanRuuvi () {
           strcpy(cstr, foundDevices.getDevice(ii).toString().substr(69,4).c_str());
           //log_i("%s","Luftdruckstring=");
           //log_i("%s",cstr);
-          f_value = convert(cstr) + 50000;
+          f_value = convert(cstr,0) + 50000;
           f_value = f_value / 100;
           //log_i("%s","Luftdruck=");
           //log_i("%f",f_value);
@@ -255,7 +255,7 @@ void BLE_scanRuuvi () {
           strcpy(cstr, foundDevices.getDevice(ii).toString().substr(85,3).c_str());
           //log_i("%s","Battery_1=");
           //log_i("%s",cstr);
-          i_value = convert(cstr);
+          i_value = convert(cstr,0);
           //log_i("%d",i_value);
           i_value = i_value >> 1;
           //log_i("%d",i_value);

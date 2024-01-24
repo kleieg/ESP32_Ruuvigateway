@@ -167,20 +167,22 @@ int convert(char hex[], int negativ) {
 
    for (int i=len-1; i>=0; i--) {
       if (hex[i]>='0' && hex[i]<='9') {
-        dec += (hex[i] - 48)*base;
-        base = base * 16;
+        help = (hex[i] - 48);
       }
       else if (hex[i]>='a' && hex[i]<='f') {
         help = (hex[i] - 87);  
-        if (negativ == 1 and i == 0 and help > 7) {
-          help = help - 8;
-          dec += help * base * -1;
-        }
-        else {
-          dec += help * base;
-        }
-        base = base * 16;
       }
+      
+      if (negativ == 1 and i == 0 and help > 7) {
+        help = help - 8;
+        dec += help * base;
+        dec = dec * -1;
+      }
+      else {
+        dec += help * base;
+      }
+      base = base * 16;
+      
    }
    return dec;
 }

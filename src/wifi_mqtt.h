@@ -9,7 +9,7 @@ int WiFi_reconnect = 0;
 // for MQTT
 long Mqtt_lastSend = 0;
 long lastReconnectAttempt = 0;
-int Mqtt_reconnect = 0;
+int Mqtt_reconnect = -1;
 
 
 // Initializes the espClient. 
